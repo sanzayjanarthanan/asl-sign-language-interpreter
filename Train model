@@ -1,0 +1,130 @@
+"""
+ASL Alphabet Classifier - Model Training Script
+Trains a CNN on the Kaggle ASL Alphabet dataset.
+
+Dataset: https://www.kaggle.com/datasets/grassknoted/asl-alphabet
+Expected folder structure after download:
+    data/
+        asl_alphabet_train/
+            A/
+            B/
+            C/
+            ...
+            del/
+            nothing/
+            space/
+"""
+
+import tensorflow as tf
+from tensorflow.keras import layers, models
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+import matplotlib.pyplot as plt
+
+# ----------------------------
+# Config
+# ----------------------------
+IMG_SIZE = 64
+BATCH_SIZE = 32
+EPOCHS = 5
+DATA_DIR = "data/asl_alphabet_train"
+MODEL_SAVE_PATH = "asl_model.h5"
+
+# ----------------------------
+# Data Loading + Augmentation
+# ----------------------------
+datagen = ImageDataGenerator(
+    rescale=1.0 / 255,
+    validation_split=0.2,
+    rotation_range=10,
+    zoom_range=0.1,
+    width_shift_range=0.1,
+    height_shift_range=0.1,
+)
+
+train_generator = datagen.flow_from_directory(
+    DATA_DIR,
+    target_size=(IMG_SIZE, IMG_SIZE),
+    batch_size=BATCH_SIZE,
+    class_mode="categorical",
+    subset="training",
+)
+
+val_generator = datagen.flow_from_directory(
+    DATA_DIR,
+    target_size=(IMG_SIZE, IMG_SIZE),
+    batch_size=BATCH_SIZE,
+    class_mode="categorical",
+    subset="validation",
+)
+
+num_classes = train_generator.num_classes
+
+# ----------------------------
+# CNN Model
+# ----------------------------
+model = models.Sequential([
+    layers.Conv2D(32, (3, 3), activation="relu", input_shape=(IMG_SIZE, IMG_SIZE, 3)),
+    layers.MaxPooling2D(2, 2),
+
+    layers.Conv2D(64, (3, 3), activation="relu"),
+    layers.MaxPooling2D(2, 2),
+
+    layers.Conv2D(128, (3, 3), activation="relu"),
+    layers.MaxPooling2D(2, 2),
+
+    layers.Flatten(),
+    layers.Dense(256, activation="relu"),
+    layers.Dropout(0.5),
+    layers.Dense(num_classes, activation="softmax"),
+])
+
+model.compile(
+    optimizer="adam",
+    loss="categorical_crossentropy",
+    metrics=["accuracy"],
+)
+
+model.summary()
+
+# ----------------------------
+# Training
+# ----------------------------
+history = model.fit(
+    train_generator,
+    validation_data=val_generator,
+    epochs=EPOCHS,
+)
+
+# ----------------------------
+# Save Model + Class Labels
+# ----------------------------
+model.save(MODEL_SAVE_PATH)
+
+with open("class_labels.txt", "w") as f:
+    for label, idx in sorted(train_generator.class_indices.items(), key=lambda x: x[1]):
+        f.write(f"{label}\n")
+
+print(f"Model saved to {MODEL_SAVE_PATH}")
+
+# ----------------------------
+# Plot Accuracy / Loss
+# ----------------------------
+plt.figure(figsize=(10, 4))
+
+plt.subplot(1, 2, 1)
+plt.plot(history.history["accuracy"], label="Train Accuracy")
+plt.plot(history.history["val_accuracy"], label="Val Accuracy")
+plt.title("Accuracy")
+plt.xlabel("Epoch")
+plt.legend()
+
+plt.subplot(1, 2, 2)
+plt.plot(history.history["loss"], label="Train Loss")
+plt.plot(history.history["val_loss"], label="Val Loss")
+plt.title("Loss")
+plt.xlabel("Epoch")
+plt.legend()
+
+plt.tight_layout()
+plt.savefig("training_curves.png")
+print("Training curves saved to training_curves.png")
